@@ -22,9 +22,8 @@ pub use self::support::SupportOutcome;
 
 pub use self::resolver::{Context, ResolverState, Submission};
 pub use self::rulebook::Rulebook;
-use crate::geo::{Border, RegionKey, Terrain};
+use crate::geo::RegionKey;
 use crate::order::{BuildOrder, MainCommand, Order, RetreatOrder};
-use crate::UnitType;
 
 pub type MappedMainOrder = Order<RegionKey, MainCommand<RegionKey>>;
 pub type MappedBuildOrder = BuildOrder<RegionKey>;
@@ -46,20 +45,4 @@ pub trait Adjudicate: Sized {
         resolver: &mut ResolverState<'a>,
         order: &'a MappedMainOrder,
     ) -> OrderOutcome<'a>;
-}
-
-impl Border {
-    fn is_passable_by(&self, unit_type: UnitType) -> bool {
-        unit_type.can_occupy(self.terrain())
-    }
-}
-
-impl UnitType {
-    fn can_occupy(self, terrain: Terrain) -> bool {
-        match terrain {
-            Terrain::Coast => true,
-            Terrain::Land => self == UnitType::Army,
-            Terrain::Sea => self == UnitType::Fleet,
-        }
-    }
 }

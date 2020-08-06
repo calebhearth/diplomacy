@@ -1,5 +1,5 @@
 use crate::parser::{Error, ErrorKind};
-use crate::{geo::Location, geo::RegionKey, Command, Nation, Order, ShortName};
+use crate::{geo::Location, geo::RegionKey, geo::Terrain, Command, Nation, Order, ShortName};
 use std::borrow::{Borrow, Cow};
 use std::collections::HashMap;
 use std::hash::{BuildHasher, Hash};
@@ -17,6 +17,17 @@ pub enum UnitType {
     /// A sea-based unit which can traverse sea and coastal terrain.
     #[cfg_attr(feature = "serde", serde(rename = "F"))]
     Fleet,
+}
+
+impl UnitType {
+    /// Check if the unit type is able to occupy the specified terrain.
+    pub fn can_occupy(self, terrain: Terrain) -> bool {
+        match terrain {
+            Terrain::Coast => true,
+            Terrain::Land => self == UnitType::Army,
+            Terrain::Sea => self == UnitType::Fleet,
+        }
+    }
 }
 
 impl FromStr for UnitType {

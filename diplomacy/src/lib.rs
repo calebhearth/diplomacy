@@ -9,6 +9,7 @@ pub mod order;
 pub mod parser;
 mod time;
 mod unit;
+pub mod variant;
 
 #[doc(inline)]
 pub use crate::calendar::{Calendar, Month};

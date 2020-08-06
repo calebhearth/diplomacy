@@ -1,4 +1,5 @@
 use crate::geo::{RegionKey, Terrain};
+use crate::UnitType;
 
 /// An undirected edge between two regions in a graph of the map. Units move
 /// between regions via borders.
@@ -42,5 +43,10 @@ impl Border {
         } else {
             None
         }
+    }
+
+    /// Check if the border's terrain allows passage by the specified unit type.
+    pub fn is_passable_by(&self, unit_type: UnitType) -> bool {
+        unit_type.can_occupy(self.terrain())
     }
 }
