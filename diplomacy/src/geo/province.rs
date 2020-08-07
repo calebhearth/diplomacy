@@ -18,11 +18,18 @@ pub enum SupplyCenter {
 /// A controllable area of the environment.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Province {
-    pub short_name: String,
+    short_name: ProvinceKey,
     pub supply_center: SupplyCenter,
 }
 
 impl Province {
+    pub fn new(short_name: impl Into<ProvinceKey>, supply_center: SupplyCenter) -> Self {
+        Self {
+            short_name: short_name.into(),
+            supply_center,
+        }
+    }
+
     /// Get if the province is a supply center for whoever controls it.
     pub fn is_supply_center(&self) -> bool {
         self.supply_center != SupplyCenter::None
@@ -31,13 +38,19 @@ impl Province {
 
 impl ShortName for Province {
     fn short_name(&self) -> Cow<'_, str> {
-        Cow::Borrowed(&self.short_name)
+        Cow::Borrowed(&self.short_name.0)
     }
 }
 
 impl PartialEq<ProvinceKey> for Province {
     fn eq(&self, other: &ProvinceKey) -> bool {
-        self.short_name == other.short_name()
+        self.short_name == *other
+    }
+}
+
+impl AsRef<ProvinceKey> for Province {
+    fn as_ref(&self) -> &ProvinceKey {
+        &self.short_name
     }
 }
 
@@ -84,6 +97,6 @@ impl<'a> From<&'a ProvinceKey> for &'a str {
 
 impl PartialEq<Province> for ProvinceKey {
     fn eq(&self, other: &Province) -> bool {
-        self.0 == other.short_name
+        *self == other.short_name
     }
 }

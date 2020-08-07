@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use super::{Border, Province, ProvinceKey, Region, RegionKey};
 use crate::geo::builder::BorderRegistry;
+use crate::ShortName;
 
 /// A collection of provinces, their constituent regions, and the interconnecting borders.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -16,6 +17,11 @@ impl Map {
     /// but order is unspecified.
     pub fn provinces(&self) -> impl Iterator<Item = &Province> {
         self.provinces.values()
+    }
+
+    /// Get a region by key, if it is present in the map.
+    pub fn get_region<'a>(&'a self, region: &RegionKey) -> Option<&'a Region> {
+        self.find_region(&region.short_name())
     }
 
     /// Find a region by its canonical short name.

@@ -54,7 +54,7 @@ pub enum Terrain {
 /// A space to which a unit can move. Provinces are made up of 1 or more regions.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Region(ProvinceKey, Option<Coast>, Terrain);
+pub struct Region(RegionKey, Terrain);
 
 impl Region {
     /// Creates a new region.
@@ -63,22 +63,22 @@ impl Region {
         coast: impl Into<Option<Coast>>,
         terrain: Terrain,
     ) -> Self {
-        Region(province.into(), coast.into(), terrain)
+        Region(RegionKey::new(province, coast), terrain)
     }
 
     /// Gets the parent province for the region.
     pub fn province(&self) -> &ProvinceKey {
-        &self.0
+        &self.0.province()
     }
 
     /// Gets the coast of the region.
     pub fn coast(&self) -> Option<Coast> {
-        self.1
+        self.0.coast()
     }
 
     /// Gets the region's terrain.
     pub fn terrain(&self) -> Terrain {
-        self.2
+        self.1
     }
 }
 
@@ -100,6 +100,12 @@ impl Location for Region {
     type Province = ProvinceKey;
 
     fn province(&self) -> &Self::Province {
+        self.0.province()
+    }
+}
+
+impl AsRef<RegionKey> for Region {
+    fn as_ref(&self) -> &RegionKey {
         &self.0
     }
 }
@@ -128,7 +134,7 @@ impl RegionKey {
 
 impl<'a> From<&'a Region> for RegionKey {
     fn from(r: &'a Region) -> Self {
-        RegionKey(r.0.clone(), r.1)
+        r.0.clone()
     }
 }
 
@@ -140,7 +146,7 @@ impl<'a> From<&'a RegionKey> for &'a ProvinceKey {
 
 impl PartialEq<Region> for RegionKey {
     fn eq(&self, other: &Region) -> bool {
-        self.0 == other.0 && self.1 == other.1
+        *self == other.0
     }
 }
 
