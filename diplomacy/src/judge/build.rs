@@ -13,10 +13,6 @@ pub use self::outcome::*;
 /// Provider for the resolver to get state about the game world that it needs to successfully
 /// judge a build phase.
 pub trait WorldState {
-    /// Get the set of nations in the game. This must include nations that issued no
-    /// orders this turn, and may include nations that have no units if those units
-    /// are entitled to build.
-    fn nations(&self) -> HashSet<&Nation>;
     /// Get the nation with a unit _currently in_ the specified province. This should
     /// return `None` if the province is vacant, even if it's controlled by a nation.
     fn occupier(&self, province: &ProvinceKey) -> Option<&Nation>;
@@ -26,9 +22,29 @@ pub trait WorldState {
     fn units(&self, nation: &Nation) -> HashSet<(UnitType, RegionKey)>;
 }
 
+// TODO make WorldState stop being a thing in favor of UnitPositions
+impl WorldState for Vec<UnitPosition<'_, RegionKey>> {
+    fn occupier(&self, province: &ProvinceKey) -> Option<&Nation> {
+        self.iter()
+            .find(|p| p.region.province() == province)
+            .map(|p| p.nation())
+    }
+
+    fn unit_count(&self, nation: &Nation) -> u8 {
+        self.iter().filter(|p| p.nation() == nation).count() as u8
+    }
+
+    fn units(&self, nation: &Nation) -> HashSet<(UnitType, RegionKey)> {
+        self.iter()
+            .filter(|p| p.nation() == nation)
+            .map(|p| (p.unit.unit_type(), p.region.clone()))
+            .collect()
+    }
+}
+
 /// The immutable pieces of a build-phase order resolution
 pub struct ResolverContext<'a, W: WorldState, A> {
-    last_time: &'a HashMap<ProvinceKey, Nation>,
+    last_time: HashMap<&'a ProvinceKey, &'a Nation>,
     this_time: &'a W,
     rules: A,
     orders: Vec<&'a MappedBuildOrder>,
@@ -43,9 +59,9 @@ impl<'a, W: WorldState, A: Adjudicate<'a, W>> ResolverContext<'a, W, A> {
     /// home power.
     pub fn new(
         rules: A,
-        last_time: &'a HashMap<ProvinceKey, Nation>,
+        last_time: HashMap<&'a ProvinceKey, &'a Nation>,
         this_time: &'a W,
-        orders: Vec<&'a MappedBuildOrder>,
+        orders: impl IntoIterator<Item = &'a MappedBuildOrder>,
     ) -> Self {
         if last_time.is_empty() {
             panic!("At least one supply center must have been owned by at least one nation. Did you forget to pass the initial world state?");
@@ -55,14 +71,14 @@ impl<'a, W: WorldState, A: Adjudicate<'a, W>> ResolverContext<'a, W, A> {
             rules,
             last_time,
             this_time,
-            orders,
+            orders: orders.into_iter().collect(),
         }
     }
 
     pub fn current_owner(&'a self, province: &ProvinceKey) -> Option<&'a Nation> {
         self.this_time
             .occupier(province)
-            .or_else(|| self.last_time.get(province))
+            .or_else(|| self.last_time.get(province).copied())
     }
 
     pub fn resolve(&self) -> Outcome<'a> {
@@ -76,10 +92,6 @@ impl<'a, W: WorldState, A: Adjudicate<'a, W>> ResolverContext<'a, W, A> {
 }
 
 impl<W: WorldState, A> WorldState for ResolverContext<'_, W, A> {
-    fn nations(&self) -> HashSet<&Nation> {
-        self.this_time.nations()
-    }
-
     fn occupier(&self, province: &ProvinceKey) -> Option<&Nation> {
         self.this_time.occupier(province)
     }
@@ -108,7 +120,7 @@ impl<'a, D> ResolverState<'a, D> {
             data,
             orders: HashMap::new(),
             live_units: context
-                .this_time
+                .rules
                 .nations()
                 .into_iter()
                 .map(|nation| (nation, context.this_time.units(nation)))
@@ -220,6 +232,9 @@ pub trait Adjudicate<'a, W: WorldState>: Sized {
     /// Mutable information used by the rulebook during adjudication.
     type CustomState;
 
+    /// Get all nations ever in the game.
+    fn nations(&self) -> HashSet<&'a Nation>;
+
     fn initialize(&self, context: &ResolverContext<'a, W, Self>) -> Self::CustomState;
 
     /// Adjudicate a single build-phase order, returning its outcome. Orders are passed to
@@ -247,11 +262,11 @@ pub trait Adjudicate<'a, W: WorldState>: Sized {
 
 /// Convert a map into an initial ownership state where each nation owns their home
 /// supply centers and all other supply centers are unowned.
-pub fn to_initial_ownerships(map: &Map) -> HashMap<ProvinceKey, Nation> {
+pub fn to_initial_ownerships(map: &Map) -> HashMap<&ProvinceKey, &Nation> {
     map.provinces()
         .filter_map(|province| {
             if let SupplyCenter::Home(nat) = &province.supply_center {
-                Some((province.into(), nat.clone()))
+                Some((province.as_ref(), nat))
             } else {
                 None
             }
@@ -270,7 +285,7 @@ mod tests {
         let ownerships = to_initial_ownerships(standard_map());
 
         assert_eq!(
-            Some(&Nation::from("AUS")),
+            Some(&&Nation::from("AUS")),
             ownerships.get(&ProvinceKey::from("bud"))
         );
 

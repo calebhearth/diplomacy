@@ -42,7 +42,12 @@ impl<'a> Outcome<'a> {
         })
     }
 
-    /// Get the submitted orders and their outcomes.
+    /// Get the outcome of a specific order.
+    pub fn get(&self, order: &MappedBuildOrder) -> Option<OrderOutcome> {
+        self.orders.get(order).copied()
+    }
+
+    /// Get all submitted orders and their outcomes.
     pub fn orders(&self) -> &HashMap<&'a MappedBuildOrder, OrderOutcome> {
         &self.orders
     }

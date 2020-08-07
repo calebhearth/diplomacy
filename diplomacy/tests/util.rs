@@ -3,7 +3,9 @@
 
 use diplomacy::geo;
 use diplomacy::geo::{Coast, ProvinceKey, RegionKey};
-use diplomacy::judge::{MappedMainOrder, MappedRetreatOrder, OrderState, Rulebook};
+use diplomacy::judge::{
+    MappedBuildOrder, MappedMainOrder, MappedRetreatOrder, OrderState, Rulebook,
+};
 use std::collections::HashMap;
 
 pub fn prov(s: &str) -> ProvinceKey {
@@ -132,6 +134,11 @@ pub fn ord(s: &str) -> MappedMainOrder {
 }
 
 pub fn retreat_ord(s: &str) -> MappedRetreatOrder {
+    s.parse()
+        .unwrap_or_else(|_| panic!(format!("'{}' should be a valid order", s)))
+}
+
+pub fn build_ord(s: &str) -> MappedBuildOrder {
     s.parse()
         .unwrap_or_else(|_| panic!(format!("'{}' should be a valid order", s)))
 }

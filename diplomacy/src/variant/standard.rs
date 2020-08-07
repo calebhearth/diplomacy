@@ -1,8 +1,21 @@
-use crate::geo::{Map, ProvinceKey, RegionKey, SupplyCenter};
+use crate::geo::{self, Map, ProvinceKey, RegionKey, SupplyCenter};
 use crate::judge::{build, build::WorldState, MappedBuildOrder};
 use crate::order::BuildCommand;
 use crate::{Nation, UnitPosition, UnitPositions};
+use lazy_static::lazy_static;
 use std::collections::{HashMap, HashSet};
+
+lazy_static! {
+    static ref STANDARD_NATIONS: HashSet<Nation> =
+        vec!["AUS", "ENG", "FRA", "GER", "ITA", "RUS", "TUR"]
+            .into_iter()
+            .map(Nation::from)
+            .collect();
+}
+
+pub fn standard_nations() -> &'static HashSet<Nation> {
+    &STANDARD_NATIONS
+}
 
 /// Vanilla Diplomacy rules.
 ///
@@ -34,6 +47,15 @@ impl Standard<'_> {
             map: self.map(),
             nations: &self.nations,
             home_scs,
+        }
+    }
+}
+
+impl Default for Standard<'_> {
+    fn default() -> Self {
+        Self {
+            map: geo::standard_map(),
+            nations: standard_nations().iter().collect(),
         }
     }
 }
@@ -70,6 +92,10 @@ where
     'world: 'turn,
 {
     type CustomState = HashMap<&'world Nation, (BuildCommand, usize)>;
+
+    fn nations(&self) -> HashSet<&'turn Nation> {
+        self.nations.clone()
+    }
 
     fn initialize(&self, context: &build::ResolverContext<'turn, W, Self>) -> Self::CustomState {
         // Count the supply centers controlled by every nation who was ever in the game.

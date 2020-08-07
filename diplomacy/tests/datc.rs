@@ -1771,7 +1771,26 @@ fn t6h16_contested_for_both_coasts() {
 #[test]
 #[ignore]
 fn t6i02_fleets_can_not_be_build_in_land_areas() {
-    judge! { "RUS: Build F mos" };
+    use diplomacy::judge::build;
+
+    let variant = diplomacy::variant::standard();
+    let world_state = vec![];
+    let orders = vec!["RUS: F mos build"]
+        .into_iter()
+        .map(build_ord)
+        .collect::<Vec<_>>();
+    let context = build::ResolverContext::new(
+        variant.as_build_judge(),
+        build::to_initial_ownerships(variant.map()),
+        &world_state,
+        orders.iter(),
+    );
+
+    let outcome = context.resolve();
+    assert_eq!(
+        Some(build::OrderOutcome::InvalidTerrain),
+        outcome.get(&build_ord("RUS: F mos build"))
+    );
 }
 
 /// http://web.inter.nl.net/users/L.B.Kruijswijk/#6.I.3
