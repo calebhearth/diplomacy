@@ -3,7 +3,7 @@
 use super::MappedBuildOrder;
 use crate::geo::{Map, ProvinceKey, RegionKey, SupplyCenter};
 use crate::order::BuildCommand;
-use crate::{Nation, UnitType};
+use crate::{Nation, Unit, UnitPosition, UnitPositions, UnitType};
 use std::collections::{HashMap, HashSet};
 
 mod outcome;
@@ -34,7 +34,7 @@ pub struct ResolverContext<'a, W: WorldState, A> {
     orders: Vec<&'a MappedBuildOrder>,
 }
 
-impl<'a, W: WorldState, A: Adjudicate> ResolverContext<'a, W, A> {
+impl<'a, W: WorldState, A: Adjudicate<'a, W>> ResolverContext<'a, W, A> {
     /// Create a new context for resolution.
     ///
     /// # First Winter
@@ -100,7 +100,10 @@ pub struct ResolverState<'a, D> {
 }
 
 impl<'a, D> ResolverState<'a, D> {
-    fn new(context: &ResolverContext<'a, impl WorldState, impl Adjudicate>, data: D) -> Self {
+    fn new<W: WorldState>(
+        context: &ResolverContext<'a, W, impl Adjudicate<'a, W>>,
+        data: D,
+    ) -> Self {
         Self {
             data,
             orders: HashMap::new(),
@@ -113,14 +116,11 @@ impl<'a, D> ResolverState<'a, D> {
         }
     }
 
-    fn resolve_order<A>(
+    fn resolve_order<W: WorldState>(
         &mut self,
-        context: &ResolverContext<'a, impl WorldState, A>,
+        context: &ResolverContext<'a, W, impl Adjudicate<'a, W, CustomState = D>>,
         order: &'a MappedBuildOrder,
-    ) -> OrderOutcome
-    where
-        A: Adjudicate<CustomState = D>,
-    {
+    ) -> OrderOutcome {
         if let Some(outcome) = self.orders.get(order) {
             return *outcome;
         }
@@ -130,16 +130,13 @@ impl<'a, D> ResolverState<'a, D> {
         self.orders.insert(order, outcome);
 
         if outcome == OrderOutcome::Succeeds {
-            let positions = self
-                .live_units
-                .entry(&order.nation)
-                .or_insert_with(HashSet::new);
             match order.command {
                 BuildCommand::Build => {
-                    positions.insert((order.unit_type, order.region.clone()));
+                    self.build_unit(order.unit_position().cloned_region())
+                        .unwrap();
                 }
                 BuildCommand::Disband => {
-                    positions.remove(&(order.unit_type, order.region.clone()));
+                    self.disband_unit(order.unit_position().cloned_region());
                 }
             }
         }
@@ -147,6 +144,8 @@ impl<'a, D> ResolverState<'a, D> {
         outcome
     }
 
+    /// Get the nation - if any - that currently has a unit in the specified province. This will change
+    /// over the course of the phase resolution, since units are being created and disbanded.
     pub fn occupier(&self, province: &ProvinceKey) -> Option<&'a Nation> {
         for (nation, units) in &self.live_units {
             for (_, region) in units {
@@ -158,20 +157,78 @@ impl<'a, D> ResolverState<'a, D> {
 
         None
     }
+
+    /// Build a unit, adding it to the world.
+    pub fn build_unit(&mut self, unit: UnitPosition<'_, RegionKey>) -> Result<(), BuildUnitError> {
+        self.live_units
+            .get_mut(unit.nation())
+            .ok_or(BuildUnitError::UnknownNation)?
+            .insert((unit.unit.unit_type(), unit.region));
+        Ok(())
+    }
+
+    /// Disband a unit, removing it from the world.
+    pub fn disband_unit(&mut self, unit: UnitPosition<'_, RegionKey>) -> bool {
+        if let Some(units) = self.live_units.get_mut(unit.nation()) {
+            units.remove(&(unit.unit.unit_type(), unit.region))
+        } else {
+            false
+        }
+    }
+
+    /// Get a map of resolved build orders to their outcomes.
+    pub fn to_order_outcomes(&self) -> HashMap<&'a MappedBuildOrder, OrderOutcome> {
+        self.orders.clone()
+    }
 }
 
-pub trait Adjudicate: Sized {
+impl<'a, D> UnitPositions<RegionKey> for ResolverState<'a, D> {
+    fn unit_positions(&self) -> Vec<UnitPosition<'_, &RegionKey>> {
+        let mut all_positions = vec![];
+        for (nation, positions) in &self.live_units {
+            for (unit_type, region) in positions {
+                all_positions.push(UnitPosition::new((*nation, *unit_type).into(), region));
+            }
+        }
+
+        all_positions
+    }
+
+    fn find_province_occupier(
+        &self,
+        province: &ProvinceKey,
+    ) -> Option<UnitPosition<'_, &RegionKey>> {
+        self.unit_positions()
+            .into_iter()
+            .find(|position| position.region == province)
+    }
+
+    fn find_region_occupier(&self, region: &RegionKey) -> Option<Unit<'_>> {
+        self.unit_positions()
+            .into_iter()
+            .find(|position| position.region == region)
+            .map(|p| p.unit)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BuildUnitError {
+    UnknownNation,
+}
+
+pub trait Adjudicate<'a, W: WorldState>: Sized {
     /// Mutable information used by the rulebook during adjudication.
     type CustomState;
 
-    fn initialize<'a, W: WorldState>(
-        &self,
-        context: &'a ResolverContext<'a, W, Self>,
-    ) -> Self::CustomState;
+    fn initialize(&self, context: &ResolverContext<'a, W, Self>) -> Self::CustomState;
 
     /// Adjudicate a single build-phase order, returning its outcome. Orders are passed to
     /// this function in the order they are received.
-    fn adjudicate<'a, W: WorldState>(
+    ///
+    /// This function should not call `ResolverState::build_unit` or `ResolverState::disband_unit`
+    /// for the unit receiving the order; returning `BuildOutcome::Succeeds` will cause the necessary
+    /// state updates.
+    fn adjudicate(
         &self,
         context: &ResolverContext<'a, W, Self>,
         state: &mut ResolverState<'a, Self::CustomState>,
@@ -181,7 +238,7 @@ pub trait Adjudicate: Sized {
     /// Complete a build-phase adjudication. The implementation of this function should
     /// perform any forcible disbands needed to bring a nation's units down to its
     /// carrying capacity.
-    fn finish<'a, W: WorldState>(
+    fn finish(
         &self,
         context: &ResolverContext<'a, W, Self>,
         state: ResolverState<'a, Self::CustomState>,

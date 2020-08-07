@@ -1,11 +1,83 @@
-use crate::{geo::RegionKey, judge::MappedBuildOrder, judge::OrderState, Nation, UnitType};
+use crate::{
+    geo::ProvinceKey, geo::RegionKey, judge::MappedBuildOrder, judge::OrderState, Nation, Unit,
+    UnitPosition, UnitPositions,
+};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
 pub struct Outcome<'a> {
-    pub orders: HashMap<&'a MappedBuildOrder, OrderOutcome>,
-    pub civil_disorder: HashSet<(UnitType, RegionKey)>,
-    pub final_units: HashMap<&'a Nation, HashSet<(UnitType, RegionKey)>>,
+    orders: HashMap<&'a MappedBuildOrder, OrderOutcome>,
+    sc_ownerships: HashMap<&'a ProvinceKey, &'a Nation>,
+    final_units: Vec<UnitPosition<'a>>,
+}
+
+impl<'a> Outcome<'a> {
+    /// Create a new build phase outcome with order outcomes, updated supply center ownerships,
+    /// and the positions of units for the next phase.
+    ///
+    /// # Errors
+    /// This function will return an error if multiple units are in the same province.
+    pub fn new(
+        orders: HashMap<&'a MappedBuildOrder, OrderOutcome>,
+        sc_ownerships: HashMap<&'a ProvinceKey, &'a Nation>,
+        units: impl IntoIterator<Item = UnitPosition<'a>>,
+    ) -> Result<Self, OutcomeError<'a>> {
+        let mut occupied_provinces = HashSet::new();
+        let mut final_units = vec![];
+
+        for unit in units {
+            if !occupied_provinces.insert(unit.region.province()) {
+                return Err(OutcomeError::MultipleUnitsInSameProvince(
+                    unit.region.province(),
+                ));
+            }
+
+            final_units.push(unit);
+        }
+
+        Ok(Self {
+            orders,
+            sc_ownerships,
+            final_units,
+        })
+    }
+
+    /// Get the submitted orders and their outcomes.
+    pub fn orders(&self) -> &HashMap<&'a MappedBuildOrder, OrderOutcome> {
+        &self.orders
+    }
+
+    pub fn sc_ownerships(&self) -> &HashMap<&'a ProvinceKey, &'a Nation> {
+        &self.sc_ownerships
+    }
+}
+
+impl UnitPositions<RegionKey> for Outcome<'_> {
+    fn unit_positions(&self) -> Vec<UnitPosition<'_>> {
+        self.final_units.clone()
+    }
+
+    fn find_province_occupier(
+        &self,
+        province: &ProvinceKey,
+    ) -> Option<UnitPosition<'_, &RegionKey>> {
+        self.unit_positions()
+            .into_iter()
+            .find(|position| position.region == province)
+    }
+
+    fn find_region_occupier(&self, region: &RegionKey) -> Option<Unit<'_>> {
+        self.unit_positions()
+            .into_iter()
+            .find(|position| position.region == region)
+            .map(|p| p.unit)
+    }
+}
+
+/// Error when a build-phase outcome blocks continuation of the game.
+#[derive(Debug, Clone)]
+pub enum OutcomeError<'a> {
+    MultipleUnitsInSameProvince(&'a ProvinceKey),
 }
 
 /// The outcome of a build-turn order.
