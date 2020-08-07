@@ -63,11 +63,8 @@ pub struct Unit<'a> {
 }
 
 impl<'a> Unit<'a> {
-    pub fn new(nation: impl Into<Cow<'a, Nation>>, unit_type: UnitType) -> Self {
-        Self {
-            nation: nation.into(),
-            unit_type,
-        }
+    pub fn new(nation: Cow<'a, Nation>, unit_type: UnitType) -> Self {
+        Self { nation, unit_type }
     }
 
     pub fn nation(&self) -> &Nation {
@@ -76,6 +73,24 @@ impl<'a> Unit<'a> {
 
     pub fn unit_type(&self) -> UnitType {
         self.unit_type
+    }
+}
+
+impl From<(Nation, UnitType)> for Unit<'_> {
+    fn from((nation, unit_type): (Nation, UnitType)) -> Self {
+        Unit {
+            nation: Cow::Owned(nation),
+            unit_type,
+        }
+    }
+}
+
+impl<'a> From<(&'a Nation, UnitType)> for Unit<'a> {
+    fn from((nation, unit_type): (&'a Nation, UnitType)) -> Self {
+        Unit {
+            nation: Cow::Borrowed(nation),
+            unit_type,
+        }
     }
 }
 
@@ -103,6 +118,15 @@ impl<'a, L> UnitPosition<'a, L> {
         UnitPosition {
             unit: self.unit.clone(),
             region: &self.region,
+        }
+    }
+}
+
+impl<'a, L: Clone> UnitPosition<'a, &'_ L> {
+    pub fn cloned_region(&self) -> UnitPosition<'a, L> {
+        UnitPosition {
+            unit: self.unit.clone(),
+            region: (*self.region).clone(),
         }
     }
 }

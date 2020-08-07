@@ -1,7 +1,7 @@
 //! The model for an order issued to a unit.
 
 use crate::{geo::Location, Nation, ShortName, Unit, UnitPosition, UnitType};
-use std::{borrow::Cow, fmt};
+use std::fmt;
 
 mod command;
 pub use self::command::{
@@ -88,7 +88,7 @@ impl<L: Location, C: Command<L>> fmt::Debug for Order<L, C> {
 
 impl<'a, L: Location, C: Command<L>> From<&'a Order<L, C>> for Unit<'a> {
     fn from(order: &'a Order<L, C>) -> Self {
-        Unit::new(Cow::Borrowed(&order.nation), order.unit_type)
+        (&order.nation, order.unit_type).into()
     }
 }
 
