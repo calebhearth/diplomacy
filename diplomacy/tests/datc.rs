@@ -1773,7 +1773,7 @@ fn t6h16_contested_for_both_coasts() {
 fn t6i02_fleets_can_not_be_build_in_land_areas() {
     use diplomacy::judge::build;
 
-    let variant = diplomacy::variant::standard();
+    let variant = diplomacy::variants::standard();
     let world_state = vec![];
     let orders = vec!["RUS: F mos build"]
         .into_iter()
